@@ -35,10 +35,10 @@ class MotionEngine(
 
     fun start() {
         if (useFusion) {
-            sensors.registerListener(this, linear, SensorManager.SENSOR_DELAY_GAME)
-            sensors.registerListener(this, gravitySensor, SensorManager.SENSOR_DELAY_GAME)
+            sensors.registerListener(this, linear, SAMPLE_PERIOD_US)
+            sensors.registerListener(this, gravitySensor, GRAVITY_PERIOD_US)
         } else if (accelerometer != null) {
-            sensors.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_GAME)
+            sensors.registerListener(this, accelerometer, SAMPLE_PERIOD_US)
         }
     }
 
@@ -101,7 +101,9 @@ class MotionEngine(
     }
 
     private companion object {
-        const val SMOOTHING = 0.12f
-        const val GRAVITY_KEEP = 0.9f
+        const val SAMPLE_PERIOD_US = 40_000 // 25 Hz
+        const val GRAVITY_PERIOD_US = 100_000 // gravity changes slowly
+        const val SMOOTHING = 0.22f
+        const val GRAVITY_KEEP = 0.8f
     }
 }

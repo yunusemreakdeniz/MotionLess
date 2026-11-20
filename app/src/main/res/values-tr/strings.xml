@@ -55,4 +55,7 @@
     <string name="location_off_body">Konum kapalıyken Oto mod hızı ölçemez. Ayarlardan konumu aç.</string>
     <string name="notif_auto_location_off">Konum kapalı. Hızı ölçmek için konumu aç.</string>
     <string name="notif_auto_reopen">Hızı ölçebilmek için uygulamayı bir kez açıp Oto\'yu oradan seç.</string>
+    <string name="notif_last_speed">Son hız %1$d km/s · </string>
+    <string name="notif_auto_checking">Hız kontrol ediliyor… · %1$d km/s hızda açılır</string>
+    <string name="notif_auto_next">Sonraki kontrol %1$s · %2$d km/s hızda açılır</string>
 </resources>

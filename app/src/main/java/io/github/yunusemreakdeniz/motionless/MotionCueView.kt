@@ -8,6 +8,7 @@ import android.os.SystemClock
 import android.util.AttributeSet
 import android.view.Choreographer
 import android.view.View
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.sqrt
 import kotlin.random.Random
@@ -33,7 +34,8 @@ class MotionCueView @JvmOverloads constructor(
     private var currentY = 0f
     private var visibility = 1f
     private var lastActive = 0L
-    private var ticking = false
+    private var attached = false
+    private var framePending = false
 
     /** Dot centres as x, y pairs; rebuilt when the size, count or layout changes. */
     private var points = FloatArray(0)
@@ -46,6 +48,7 @@ class MotionCueView @JvmOverloads constructor(
         set(value) {
             field = value
             invalidate()
+            wake()
         }
 
     fun onMotion(lateral: Float, forward: Float) {
@@ -56,29 +59,52 @@ class MotionCueView @JvmOverloads constructor(
         if (sqrt(lateral * lateral + forward * forward) > ACTIVE_THRESHOLD) {
             lastActive = SystemClock.uptimeMillis()
         }
+        wake()
+    }
+
+    /** Starts the frame loop if it went to sleep; it stops again once the dots settle. */
+    private fun wake() {
+        if (!attached || framePending) return
+        framePending = true
+        Choreographer.getInstance().postFrameCallback(this)
     }
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         lastActive = SystemClock.uptimeMillis()
-        ticking = true
-        Choreographer.getInstance().postFrameCallback(this)
+        attached = true
+        wake()
     }
 
     override fun onDetachedFromWindow() {
-        ticking = false
+        attached = false
+        framePending = false
         Choreographer.getInstance().removeFrameCallback(this)
         super.onDetachedFromWindow()
     }
 
     override fun doFrame(frameTimeNanos: Long) {
-        if (!ticking) return
-        currentX += (targetX - currentX) * FOLLOW
-        currentY += (targetY - currentY) * FOLLOW
+        framePending = false
+        if (!attached) return
         val calm = SystemClock.uptimeMillis() - lastActive > HIDE_AFTER_MS
         val wanted = if (settings.autoHide && calm && !forceVisible) 0f else 1f
-        visibility += (wanted - visibility) * FADE
+        val dx = targetX - currentX
+        val dy = targetY - currentY
+        val dv = wanted - visibility
+        val settled = abs(dx) < SETTLE_PX && abs(dy) < SETTLE_PX && abs(dv) < 0.01f
+        if (settled) {
+            // Snap to the target and stop drawing until the next sensor change.
+            if (currentX != targetX || currentY != targetY || visibility != wanted) {
+                currentX = targetX; currentY = targetY; visibility = wanted
+                invalidate()
+            }
+            return
+        }
+        currentX += dx * FOLLOW
+        currentY += dy * FOLLOW
+        visibility += dv * FADE
         invalidate()
+        framePending = true
         Choreographer.getInstance().postFrameCallback(this)
     }
 
@@ -169,6 +195,7 @@ class MotionCueView @JvmOverloads constructor(
         const val HIDE_AFTER_MS = 4000L
         const val FOLLOW = 0.2f
         const val FADE = 0.08f
+        const val SETTLE_PX = 0.3f
         const val EDGE_MARGIN_DP = 10f
         const val BAND_MIN_DP = 64f
         const val BAND_FRACTION = 0.2f

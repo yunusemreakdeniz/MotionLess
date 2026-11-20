@@ -8,7 +8,9 @@ Ekranın kenarlarına noktalar koyar. Telefonun ivme sensörü aracın hızlanma
 
 - Noktalar her uygulamanın üzerinde görünür ve dokunmaları engellemez.
 - Telefon hangi açıyla tutulursa tutulsun, yerçekimi yönüne göre aracın ileri ve yan ivmesi ayrıştırılır.
-- Üç mod: **Kapalı**, **Oto**, **Açık**. Oto modda ekran açıkken GPS hızı ölçülür; hız eşiği (varsayılan 15 km/s) geçilince ipuçları kendiliğinden açılır, hız eşiğin yarısının altında bir dakika kalınca kapanır. Ekran kapanınca GPS durur.
+- Üç mod: **Kapalı**, **Oto**, **Açık**. Oto modda hız eşiği (varsayılan 15 km/s) geçilince ipuçları kendiliğinden açılır.
+- Pil dostu Oto mod: GPS sürekli açık kalmaz, yalnızca ekran açıkken kısa kontroller yapar (hızı alınca veya en geç 25 sn'de kapanır). Hız düşükse kontroller 1 → 2 → 4 → 8 dakikaya seyrekleşir; telefonun düşük güçlü "belirgin hareket" sensörü harekete geçince hemen kontrol eder. İpuçları açıkken dakikada bir kontrol eder; art arda iki kontrolde hız eşiğin yarısının altındaysa kapatır.
+- Noktalar yalnızca kıpırdadıklarında çizilir; ivme sensörü 25 Hz'de okunur; ekran kapalıyken her şey durur.
 - Kalıcı bildirimden modlar arasında geçilir (Aç / Oto / Kapat); bildirim anlık hızı gösterir.
 - Hızlı Ayarlar kutucuğu her dokunuşta Kapalı → Oto → Açık arasında döner.
 - Noktalar Apple'daki gibi kenarlarda düzensiz dağılır; nokta sayısı, hassasiyet, boyut, opaklık, renk ve yerleşim (kenarlar veya tam ekran) ayarlanabilir.

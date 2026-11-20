@@ -14,45 +14,67 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
+import android.hardware.Sensor
+import android.hardware.SensorManager
+import android.hardware.TriggerEvent
+import android.hardware.TriggerEventListener
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.Settings
+import android.text.format.DateFormat
 import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
-import kotlin.math.max
+import java.util.Date
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
- * Runs the cues. In ON mode the dot overlay is always shown. In AUTO mode GPS runs while the screen
- * is on, and the overlay appears once the speed passes the threshold; it goes away after the speed
- * stays below half the threshold for a minute, so short stops at lights do not make it flicker.
- * The ongoing notification switches between the modes.
+ * Runs the cues.
+ *
+ * ON: the dot overlay is shown while the screen is on.
+ *
+ * AUTO: GPS is never left running. While the screen is on the service takes short speed readings
+ * ("probes"): GPS turns on, the first reading with a speed ends it (or 25 s pass), and GPS turns off.
+ * - Idle: probes back off 1 -> 2 -> 4 -> 8 min. The low-power significant-motion sensor triggers a
+ *   probe at once when the phone starts moving, and turning the screen on does too.
+ * - Cues on: a probe every minute; two probes in a row below half the threshold turn them off, so
+ *   short stops at lights do not make them flicker.
+ * Screen off stops everything. The ongoing notification switches between the modes.
  */
 class MotionCueService : Service() {
+
+    private val handler = Handler(Looper.getMainLooper())
 
     private var mode = CueMode.OFF
     private var overlay: MotionCueView? = null
     private var engine: MotionEngine? = null
-
     private var screenOn = true
-    private var receiverRegistered = false
-    private var gpsOn = false
-    private var speedKmh: Int? = null
-    private var lastLocation: Location? = null
-    private var autoActive = false
-    private var slowSince = 0L
-    private var lastNotificationKey = ""
     private var hasLocationType = false
+    private var lastNotificationKey = ""
+
+    // Auto mode state.
+    private var autoActive = false
+    private var probing = false
+    private var probeLocation: Location? = null
+    private var lastSpeedKmh: Int? = null
+    private var slowProbes = 0
+    private var idleIntervalMs = FIRST_IDLE_INTERVAL_MS
+    private var nextProbeAt = 0L
+    private var motionArmed = false
+
+    private val probeRunnable = Runnable { startProbe() }
+    private val probeTimeout = Runnable { endProbe(null) }
 
     private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key != Prefs.KEY_MODE && key != Prefs.KEY_STATUS) overlay?.settings = Prefs.load(this)
@@ -61,20 +83,27 @@ class MotionCueService : Service() {
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             screenOn = intent.action == Intent.ACTION_SCREEN_ON
-            if (mode == CueMode.AUTO) updateAuto()
+            refresh()
         }
     }
 
     // All four callbacks are overridden: before Android 11 they are abstract and the system calls them.
     private val locationListener = object : LocationListener {
-        override fun onLocationChanged(location: Location) = onLocation(location)
+        override fun onLocationChanged(location: Location) = onProbeLocation(location)
         override fun onProviderEnabled(provider: String) = updateNotification(force = true)
-        override fun onProviderDisabled(provider: String) {
-            speedKmh = null
-            updateNotification(force = true)
-        }
+        override fun onProviderDisabled(provider: String) = updateNotification(force = true)
         @Deprecated("Deprecated in Java")
         override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
+    }
+
+    private val motionListener = object : TriggerEventListener() {
+        override fun onTrigger(event: TriggerEvent?) {
+            motionArmed = false
+            if (mode == CueMode.AUTO && screenOn && !autoActive && !probing) {
+                idleIntervalMs = FIRST_IDLE_INTERVAL_MS
+                startProbe()
+            }
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -84,6 +113,10 @@ class MotionCueService : Service() {
         instance = this
         screenOn = (getSystemService(Context.POWER_SERVICE) as PowerManager).isInteractive
         Prefs.of(this).registerOnSharedPreferenceChangeListener(prefsListener)
+        registerReceiver(screenReceiver, IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_SCREEN_OFF)
+        })
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -109,27 +142,17 @@ class MotionCueService : Service() {
             // Started without location access (e.g. permission granted later): try to add it now.
             startInForeground(buildNotification(requested))
         }
+        val changed = requested != mode
         mode = requested
         Prefs.setMode(this, mode)
-        when (mode) {
-            CueMode.ON -> {
-                stopGps()
-                showOverlay(true)
-            }
-            CueMode.AUTO -> {
-                if (!receiverRegistered) {
-                    registerReceiver(screenReceiver, IntentFilter().apply {
-                        addAction(Intent.ACTION_SCREEN_ON)
-                        addAction(Intent.ACTION_SCREEN_OFF)
-                    })
-                    receiverRegistered = true
-                }
-                autoActive = false
-                slowSince = 0L
-                updateAuto()
-            }
-            CueMode.OFF -> Unit
+        if (changed) {
+            autoActive = false
+            slowProbes = 0
+            idleIntervalMs = FIRST_IDLE_INTERVAL_MS
+            stopProbe()
+            handler.removeCallbacks(probeRunnable)
         }
+        refresh(probeNow = changed)
         updateNotification(force = true)
         CueTileService.refresh(this)
         return true
@@ -137,9 +160,11 @@ class MotionCueService : Service() {
 
     override fun onDestroy() {
         if (instance === this) instance = null
-        stopGps()
+        handler.removeCallbacksAndMessages(null)
+        stopProbe()
+        disarmMotion()
         showOverlay(false)
-        if (receiverRegistered) unregisterReceiver(screenReceiver)
+        unregisterReceiver(screenReceiver)
         Prefs.of(this).unregisterOnSharedPreferenceChangeListener(prefsListener)
         Prefs.setMode(this, CueMode.OFF)
         Prefs.setStatus(this, "")
@@ -147,48 +172,130 @@ class MotionCueService : Service() {
         super.onDestroy()
     }
 
-    // ---- Auto mode ----
-
-    private fun updateAuto() {
-        if (!screenOn) {
-            stopGps()
-            autoActive = false
-            slowSince = 0L
-            showOverlay(false)
-        } else {
-            startGps()
-            showOverlay(autoActive)
+    /** Brings overlay, probes and the motion trigger in line with the mode and the screen state. */
+    private fun refresh(probeNow: Boolean = true) {
+        when {
+            mode == CueMode.ON -> {
+                stopProbe()
+                handler.removeCallbacks(probeRunnable)
+                disarmMotion()
+                showOverlay(screenOn)
+            }
+            mode == CueMode.AUTO && !screenOn -> {
+                stopProbe()
+                handler.removeCallbacks(probeRunnable)
+                disarmMotion()
+                autoActive = false
+                slowProbes = 0
+                idleIntervalMs = FIRST_IDLE_INTERVAL_MS
+                showOverlay(false)
+            }
+            mode == CueMode.AUTO -> {
+                showOverlay(autoActive)
+                if (!autoActive) armMotion()
+                if (probeNow && !probing) startProbe()
+            }
+            else -> Unit
         }
         updateNotification()
     }
 
-    private fun onLocation(location: Location) {
-        val previous = lastLocation
-        lastLocation = location
+    // ---- Auto mode: short GPS probes ----
+
+    private fun startProbe() {
+        handler.removeCallbacks(probeRunnable)
+        if (mode != CueMode.AUTO || !screenOn || probing) return
+        if (!hasLocationPermission() || !locationEnabled()) {
+            scheduleProbe(MAX_IDLE_INTERVAL_MS)
+            updateNotification()
+            return
+        }
+        val locations = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        try {
+            locations.requestLocationUpdates(LocationManager.GPS_PROVIDER, PROBE_INTERVAL_MS, 0f, locationListener, Looper.getMainLooper())
+        } catch (_: Exception) {
+            scheduleProbe(MAX_IDLE_INTERVAL_MS)
+            return
+        }
+        probing = true
+        probeLocation = null
+        handler.postDelayed(probeTimeout, PROBE_TIMEOUT_MS)
+        updateNotification()
+    }
+
+    private fun stopProbe() {
+        handler.removeCallbacks(probeTimeout)
+        if (!probing) return
+        (getSystemService(Context.LOCATION_SERVICE) as LocationManager).removeUpdates(locationListener)
+        probing = false
+        probeLocation = null
+    }
+
+    private fun onProbeLocation(location: Location) {
+        if (!probing) return
+        val previous = probeLocation
+        probeLocation = location
         val metersPerSecond = when {
             location.hasSpeed() -> location.speed
             previous != null && location.time > previous.time ->
                 location.distanceTo(previous) / ((location.time - previous.time) / 1000f)
-            else -> return
+            else -> return // wait for a second fix
         }
-        val kmh = metersPerSecond * 3.6f
-        speedKmh = kmh.roundToInt()
+        endProbe(metersPerSecond * 3.6f)
+    }
 
+    /** [kmh] is null when no reading came in time (no GPS signal, tunnel). */
+    private fun endProbe(kmh: Float?) {
+        stopProbe()
+        if (mode != CueMode.AUTO || !screenOn) return
         val threshold = Prefs.load(this).speedThresholdKmh
-        val now = SystemClock.elapsedRealtime()
-        when {
-            kmh >= threshold -> {
-                autoActive = true
-                slowSince = 0L
+        if (kmh != null) lastSpeedKmh = kmh.roundToInt()
+
+        if (autoActive) {
+            when {
+                kmh == null || kmh >= threshold * 0.5f -> slowProbes = 0
+                else -> slowProbes++
             }
-            kmh < max(5f, threshold * 0.5f) -> {
-                if (slowSince == 0L) slowSince = now
-                if (now - slowSince > STOP_AFTER_MS) autoActive = false
+            if (slowProbes >= SLOW_PROBES_TO_STOP) {
+                autoActive = false
+                slowProbes = 0
+                idleIntervalMs = FIRST_IDLE_INTERVAL_MS
+                scheduleProbe(idleIntervalMs)
+            } else {
+                scheduleProbe(if (slowProbes > 0) CONFIRM_INTERVAL_MS else ACTIVE_INTERVAL_MS)
             }
-            else -> slowSince = 0L
+        } else if (kmh != null && kmh >= threshold) {
+            autoActive = true
+            slowProbes = 0
+            scheduleProbe(ACTIVE_INTERVAL_MS)
+        } else {
+            scheduleProbe(idleIntervalMs)
+            idleIntervalMs = min(idleIntervalMs * 2, MAX_IDLE_INTERVAL_MS)
         }
-        if (mode == CueMode.AUTO) showOverlay(autoActive && screenOn)
+        showOverlay(autoActive)
+        if (autoActive) disarmMotion() else armMotion()
         updateNotification()
+    }
+
+    private fun scheduleProbe(delayMs: Long) {
+        handler.removeCallbacks(probeRunnable)
+        nextProbeAt = SystemClock.elapsedRealtime() + delayMs
+        handler.postDelayed(probeRunnable, delayMs)
+    }
+
+    /** Low-power one-shot sensor that fires when the phone starts moving (walking, a vehicle). */
+    private fun armMotion() {
+        if (motionArmed) return
+        val sensors = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        val sensor = sensors.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION) ?: return
+        motionArmed = sensors.requestTriggerSensor(motionListener, sensor)
+    }
+
+    private fun disarmMotion() {
+        if (!motionArmed) return
+        val sensors = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        sensors.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION)?.let { sensors.cancelTriggerSensor(motionListener, it) }
+        motionArmed = false
     }
 
     private fun locationEnabled(): Boolean =
@@ -196,25 +303,6 @@ class MotionCueService : Service() {
 
     private fun hasLocationPermission(): Boolean =
         ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-
-    private fun startGps() {
-        if (gpsOn || !hasLocationPermission()) return
-        val locations = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        try {
-            locations.requestLocationUpdates(LocationManager.GPS_PROVIDER, GPS_INTERVAL_MS, 0f, locationListener, Looper.getMainLooper())
-            gpsOn = true
-        } catch (_: SecurityException) {
-        } catch (_: IllegalArgumentException) {
-        }
-    }
-
-    private fun stopGps() {
-        if (!gpsOn) return
-        (getSystemService(Context.LOCATION_SERVICE) as LocationManager).removeUpdates(locationListener)
-        gpsOn = false
-        speedKmh = null
-        lastLocation = null
-    }
 
     // ---- Overlay ----
 
@@ -280,11 +368,16 @@ class MotionCueService : Service() {
 
     private fun updateNotification(force: Boolean = false) {
         if (mode == CueMode.OFF) return
-        val key = "$mode|$autoActive|$screenOn|$gpsOn|$speedKmh|${locationEnabled()}"
+        val key = "$mode|$autoActive|$screenOn|$probing|$lastSpeedKmh|$nextProbeAt|${locationEnabled()}"
         if (!force && key == lastNotificationKey) return
         lastNotificationKey = key
         val notification = buildNotification(mode)
         (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(NOTIFICATION_ID, notification)
+    }
+
+    private fun nextProbeClock(): String {
+        val wall = System.currentTimeMillis() + (nextProbeAt - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+        return DateFormat.getTimeFormat(this).format(Date(wall))
     }
 
     private fun buildNotification(forMode: CueMode): Notification {
@@ -293,13 +386,14 @@ class MotionCueService : Service() {
         val text: String
         if (forMode == CueMode.AUTO) {
             title = getString(if (autoActive && screenOn) R.string.notif_auto_active else R.string.notif_auto_waiting)
+            val speedPart = lastSpeedKmh?.let { getString(R.string.notif_last_speed, it) } ?: ""
             text = when {
                 !hasLocationPermission() -> getString(R.string.notif_auto_no_permission)
                 !locationEnabled() -> getString(R.string.notif_auto_location_off)
                 !hasLocationType -> getString(R.string.notif_auto_reopen)
                 !screenOn -> getString(R.string.notif_auto_screen_off)
-                speedKmh != null -> getString(R.string.notif_auto_speed, speedKmh, threshold)
-                else -> getString(R.string.notif_auto_searching, threshold)
+                probing -> getString(R.string.notif_auto_checking, threshold)
+                else -> speedPart + getString(R.string.notif_auto_next, nextProbeClock(), threshold)
             }
         } else {
             title = getString(R.string.notif_on)
@@ -344,8 +438,14 @@ class MotionCueService : Service() {
         private const val OLD_CHANNEL_ID = "cues"
         private const val NOTIFICATION_ID = 1
         const val EXTRA_MODE = "mode"
-        private const val GPS_INTERVAL_MS = 2000L
-        private const val STOP_AFTER_MS = 60_000L
+
+        private const val PROBE_INTERVAL_MS = 1000L
+        private const val PROBE_TIMEOUT_MS = 25_000L
+        private const val FIRST_IDLE_INTERVAL_MS = 60_000L
+        private const val MAX_IDLE_INTERVAL_MS = 8 * 60_000L
+        private const val ACTIVE_INTERVAL_MS = 60_000L
+        private const val CONFIRM_INTERVAL_MS = 30_000L
+        private const val SLOW_PROBES_TO_STOP = 2
 
         /** The running service, if any (same process), so mode changes need no restart. */
         @Volatile
@@ -359,7 +459,7 @@ class MotionCueService : Service() {
             )
         }
 
-        /** Changes the mode of the running service (allowed from the background since it is a foreground service). */
+        /** Changes the mode of the running service in place; falls back to a service call when it is not running. */
         fun switchTo(context: Context, mode: CueMode) {
             val running = instance
             if (running != null) {
