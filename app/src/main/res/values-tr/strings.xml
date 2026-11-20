@@ -54,4 +54,5 @@
     <string name="location_off_title">Konum kapalı</string>
     <string name="location_off_body">Konum kapalıyken Oto mod hızı ölçemez. Ayarlardan konumu aç.</string>
     <string name="notif_auto_location_off">Konum kapalı. Hızı ölçmek için konumu aç.</string>
+    <string name="notif_auto_reopen">Hızı ölçebilmek için uygulamayı bir kez açıp Oto\'yu oradan seç.</string>
 </resources>

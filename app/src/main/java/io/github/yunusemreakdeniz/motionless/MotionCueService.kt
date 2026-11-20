@@ -52,6 +52,7 @@ class MotionCueService : Service() {
     private var autoActive = false
     private var slowSince = 0L
     private var lastNotificationKey = ""
+    private var hasLocationType = false
 
     private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key != Prefs.KEY_MODE && key != Prefs.KEY_STATUS) overlay?.settings = Prefs.load(this)
@@ -80,6 +81,7 @@ class MotionCueService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         screenOn = (getSystemService(Context.POWER_SERVICE) as PowerManager).isInteractive
         Prefs.of(this).registerOnSharedPreferenceChangeListener(prefsListener)
     }
@@ -89,9 +91,23 @@ class MotionCueService : Service() {
             ?: Prefs.mode(this).takeIf { it != CueMode.OFF }
             ?: CueMode.ON
         startInForeground(buildNotification(requested))
+        return if (applyMode(requested)) START_STICKY else START_NOT_STICKY
+    }
+
+    /**
+     * Switches the running service to [requested] in place. Notification buttons and the tile call
+     * this directly (through [ModeReceiver]) instead of restarting the service: a restart from the
+     * background may be refused, especially for the location type that Auto mode needs.
+     * Returns false when the service stops.
+     */
+    fun applyMode(requested: CueMode): Boolean {
         if (requested == CueMode.OFF || !Settings.canDrawOverlays(this)) {
             stopSelf()
-            return START_NOT_STICKY
+            return false
+        }
+        if (requested == CueMode.AUTO && !hasLocationType && hasLocationPermission()) {
+            // Started without location access (e.g. permission granted later): try to add it now.
+            startInForeground(buildNotification(requested))
         }
         mode = requested
         Prefs.setMode(this, mode)
@@ -116,10 +132,11 @@ class MotionCueService : Service() {
         }
         updateNotification(force = true)
         CueTileService.refresh(this)
-        return START_STICKY
+        return true
     }
 
     override fun onDestroy() {
+        if (instance === this) instance = null
         stopGps()
         showOverlay(false)
         if (receiverRegistered) unregisterReceiver(screenReceiver)
@@ -249,10 +266,15 @@ class MotionCueService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && hasLocationPermission()) type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
         try {
             ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, type)
-        } catch (_: SecurityException) {
-            // Location type is refused when the app is in the background; keep running without it.
+            hasLocationType = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || hasLocationPermission()
+        } catch (_: Exception) {
+            // The location type is refused while the app is in the background; keep running without it.
             val fallback = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
-            ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, fallback)
+            try {
+                ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, fallback)
+            } catch (_: Exception) {
+            }
+            hasLocationType = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q
         }
     }
 
@@ -274,6 +296,7 @@ class MotionCueService : Service() {
             text = when {
                 !hasLocationPermission() -> getString(R.string.notif_auto_no_permission)
                 !locationEnabled() -> getString(R.string.notif_auto_location_off)
+                !hasLocationType -> getString(R.string.notif_auto_reopen)
                 !screenOn -> getString(R.string.notif_auto_screen_off)
                 speedKmh != null -> getString(R.string.notif_auto_speed, speedKmh, threshold)
                 else -> getString(R.string.notif_auto_searching, threshold)
@@ -310,9 +333,9 @@ class MotionCueService : Service() {
         return builder.build()
     }
 
-    private fun modeIntent(target: CueMode): PendingIntent = PendingIntent.getService(
+    private fun modeIntent(target: CueMode): PendingIntent = PendingIntent.getBroadcast(
         this, 10 + target.ordinal,
-        Intent(this, MotionCueService::class.java).putExtra(EXTRA_MODE, target.name),
+        Intent(this, ModeReceiver::class.java).setAction(ModeReceiver.ACTION_SET_MODE).putExtra(EXTRA_MODE, target.name),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 
@@ -320,9 +343,14 @@ class MotionCueService : Service() {
         private const val CHANNEL_ID = "cues_v2"
         private const val OLD_CHANNEL_ID = "cues"
         private const val NOTIFICATION_ID = 1
-        private const val EXTRA_MODE = "mode"
+        const val EXTRA_MODE = "mode"
         private const val GPS_INTERVAL_MS = 2000L
         private const val STOP_AFTER_MS = 60_000L
+
+        /** The running service, if any (same process), so mode changes need no restart. */
+        @Volatile
+        var instance: MotionCueService? = null
+            private set
 
         /** Starts the service in [mode]; call it while the app is in the foreground. */
         fun start(context: Context, mode: CueMode) {
@@ -333,7 +361,10 @@ class MotionCueService : Service() {
 
         /** Changes the mode of the running service (allowed from the background since it is a foreground service). */
         fun switchTo(context: Context, mode: CueMode) {
-            if (mode == CueMode.OFF) {
+            val running = instance
+            if (running != null) {
+                running.applyMode(mode)
+            } else if (mode == CueMode.OFF) {
                 context.stopService(Intent(context, MotionCueService::class.java))
             } else {
                 context.startService(Intent(context, MotionCueService::class.java).putExtra(EXTRA_MODE, mode.name))

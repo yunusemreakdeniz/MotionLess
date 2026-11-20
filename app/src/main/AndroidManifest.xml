@@ -39,6 +39,10 @@
                 android:value="Visual motion cues overlay that reduces motion sickness while the user reads in a vehicle" />
         </service>
 
+        <receiver
+            android:name=".ModeReceiver"
+            android:exported="false" />
+
         <service
             android:name=".CueTileService"
             android:exported="true"

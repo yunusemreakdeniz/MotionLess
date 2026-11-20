@@ -55,4 +55,5 @@
     <string name="location_off_title">Location is off</string>
     <string name="location_off_body">Auto mode cannot measure speed while location is off. Turn on location in settings.</string>
     <string name="notif_auto_location_off">Location is off. Turn it on to measure speed.</string>
+    <string name="notif_auto_reopen">To measure speed, open the app once and choose Auto there.</string>
 </resources>
