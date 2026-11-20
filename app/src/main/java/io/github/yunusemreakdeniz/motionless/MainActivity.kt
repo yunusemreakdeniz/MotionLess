@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.location.LocationManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -13,7 +14,10 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.core.location.LocationManagerCompat
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.chip.ChipGroup
@@ -25,6 +29,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var modeGroup: MaterialButtonToggleGroup
     private lateinit var status: TextView
     private lateinit var permissionCard: View
+    private lateinit var notificationCard: View
+    private lateinit var liveStatus: TextView
+    private lateinit var dotCount: Slider
     private lateinit var preview: MotionCueView
     private lateinit var speedLabel: TextView
     private lateinit var speed: Slider
@@ -44,7 +51,7 @@ class MainActivity : AppCompatActivity() {
     private val colorChips = intArrayOf(R.id.color_white, R.id.color_black, R.id.color_blue, R.id.color_orange)
 
     private val modeListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == Prefs.KEY_MODE) refreshUi()
+        if (key == Prefs.KEY_MODE || key == Prefs.KEY_STATUS) refreshUi()
     }
 
     private val notificationPermission =
@@ -57,8 +64,9 @@ class MainActivity : AppCompatActivity() {
                 requestMode(target)
             } else {
                 pendingMode = null
-                Toast.makeText(this, R.string.need_location, Toast.LENGTH_LONG).show()
+                backgroundAfterStart = false
                 refreshUi()
+                showLocationDialog(approximateOnly = result[Manifest.permission.ACCESS_COARSE_LOCATION] == true)
             }
         }
 
@@ -69,6 +77,9 @@ class MainActivity : AppCompatActivity() {
         modeGroup = findViewById(R.id.mode_group)
         status = findViewById(R.id.status)
         permissionCard = findViewById(R.id.permission_card)
+        notificationCard = findViewById(R.id.notification_card)
+        liveStatus = findViewById(R.id.live_status)
+        dotCount = findViewById(R.id.dot_count)
         preview = findViewById(R.id.preview)
         speedLabel = findViewById(R.id.speed_label)
         speed = findViewById(R.id.speed)
@@ -93,11 +104,15 @@ class MainActivity : AppCompatActivity() {
             )
         }
         findViewById<MaterialButton>(R.id.grant).setOnClickListener { openOverlaySettings() }
+        findViewById<MaterialButton>(R.id.grant_notifications).setOnClickListener {
+            startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName))
+        }
 
         val sliderListener = Slider.OnChangeListener { _, _, fromUser -> if (fromUser) saveControls() }
         speed.addOnChangeListener(sliderListener)
         sensitivity.addOnChangeListener(sliderListener)
         dotSize.addOnChangeListener(sliderListener)
+        dotCount.addOnChangeListener(sliderListener)
         opacity.addOnChangeListener(sliderListener)
         colors.setOnCheckedStateChangeListener { _, _ -> saveControls() }
         layoutGroup.addOnButtonCheckedListener { _, _, isChecked -> if (isChecked) saveControls() }
@@ -166,6 +181,15 @@ class MainActivity : AppCompatActivity() {
             )
             return
         }
+        if (mode == CueMode.AUTO && !LocationManagerCompat.isLocationEnabled(getSystemService(LOCATION_SERVICE) as LocationManager)) {
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.location_off_title)
+                .setMessage(R.string.location_off_body)
+                .setPositiveButton(R.string.open_settings) { _, _ -> startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) }
+                .setNegativeButton(android.R.string.cancel, null)
+                .show()
+            backgroundAfterStart = false
+        }
         MotionCueService.start(this, mode)
         done()
         if (backgroundAfterStart) moveTaskToBack(true)
@@ -175,6 +199,17 @@ class MainActivity : AppCompatActivity() {
     private fun done() {
         pendingMode = null
         modeGroup.postDelayed({ refreshUi() }, 300)
+    }
+
+    private fun showLocationDialog(approximateOnly: Boolean) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.location_needed_title)
+            .setMessage(if (approximateOnly) R.string.location_precise_body else R.string.location_needed_body)
+            .setPositiveButton(R.string.open_settings) { _, _ ->
+                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     private fun granted(permission: String) =
@@ -201,6 +236,11 @@ class MainActivity : AppCompatActivity() {
             CueMode.ON -> getString(R.string.status_on)
         }
         permissionCard.visibility = if (Settings.canDrawOverlays(this)) View.GONE else View.VISIBLE
+        notificationCard.visibility =
+            if (NotificationManagerCompat.from(this).areNotificationsEnabled()) View.GONE else View.VISIBLE
+        val live = Prefs.status(this)
+        liveStatus.text = live
+        liveStatus.visibility = if (mode != CueMode.OFF && live.isNotEmpty()) View.VISIBLE else View.GONE
     }
 
     private fun loadControls() {
@@ -209,6 +249,7 @@ class MainActivity : AppCompatActivity() {
         speed.value = s.speedThresholdKmh.toFloat().coerceIn(speed.valueFrom, speed.valueTo)
         sensitivity.value = s.sensitivity.toFloat()
         dotSize.value = s.dotSizeDp.toFloat()
+        dotCount.value = s.dotCount.toFloat().coerceIn(dotCount.valueFrom, dotCount.valueTo)
         opacity.value = s.opacity.toFloat()
         colors.check(colorChips[s.colorIndex.coerceIn(colorChips.indices)])
         layoutGroup.check(if (s.layout == CueSettings.LAYOUT_GRID) R.id.layout_grid else R.id.layout_edges)
@@ -228,6 +269,7 @@ class MainActivity : AppCompatActivity() {
             layout = if (layoutGroup.checkedButtonId == R.id.layout_grid) CueSettings.LAYOUT_GRID else CueSettings.LAYOUT_EDGES,
             autoHide = autoHide.isChecked,
             speedThresholdKmh = speed.value.toInt(),
+            dotCount = dotCount.value.toInt(),
         )
         Prefs.save(this, s)
         preview.settings = s

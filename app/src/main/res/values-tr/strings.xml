@@ -44,4 +44,14 @@
     <string name="action_on">Aç</string>
     <string name="action_auto">Oto</string>
     <string name="action_off">Kapat</string>
+    <string name="dot_count">Nokta sayısı</string>
+    <string name="notif_perm_title">Bildirimler kapalı</string>
+    <string name="notif_perm_body">Bildirim panelinden Kapalı, Oto ve Açık arasında geçebilmek için bildirimleri aç.</string>
+    <string name="open_settings">Ayarları aç</string>
+    <string name="location_needed_title">Tam konum gerekli</string>
+    <string name="location_needed_body">Oto mod hızı GPS ile ölçer. Uygulamayı kullanırken konum iznini ver ve Tam konum seçeneğini aç.</string>
+    <string name="location_precise_body">Yalnızca yaklaşık konuma izin verdin, bununla hız ölçülemez. Ayarlarda İzinler > Konum bölümünden Tam konum kullan seçeneğini aç.</string>
+    <string name="location_off_title">Konum kapalı</string>
+    <string name="location_off_body">Konum kapalıyken Oto mod hızı ölçemez. Ayarlardan konumu aç.</string>
+    <string name="notif_auto_location_off">Konum kapalı. Hızı ölçmek için konumu aç.</string>
 </resources>

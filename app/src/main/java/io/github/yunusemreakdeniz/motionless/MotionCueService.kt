@@ -28,6 +28,7 @@ import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import androidx.core.location.LocationManagerCompat
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -53,7 +54,7 @@ class MotionCueService : Service() {
     private var lastNotificationKey = ""
 
     private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key != Prefs.KEY_MODE) overlay?.settings = Prefs.load(this)
+        if (key != Prefs.KEY_MODE && key != Prefs.KEY_STATUS) overlay?.settings = Prefs.load(this)
     }
 
     private val screenReceiver = object : BroadcastReceiver() {
@@ -66,10 +67,10 @@ class MotionCueService : Service() {
     // All four callbacks are overridden: before Android 11 they are abstract and the system calls them.
     private val locationListener = object : LocationListener {
         override fun onLocationChanged(location: Location) = onLocation(location)
-        override fun onProviderEnabled(provider: String) = Unit
+        override fun onProviderEnabled(provider: String) = updateNotification(force = true)
         override fun onProviderDisabled(provider: String) {
             speedKmh = null
-            updateNotification()
+            updateNotification(force = true)
         }
         @Deprecated("Deprecated in Java")
         override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
@@ -124,6 +125,7 @@ class MotionCueService : Service() {
         if (receiverRegistered) unregisterReceiver(screenReceiver)
         Prefs.of(this).unregisterOnSharedPreferenceChangeListener(prefsListener)
         Prefs.setMode(this, CueMode.OFF)
+        Prefs.setStatus(this, "")
         CueTileService.refresh(this)
         super.onDestroy()
     }
@@ -171,6 +173,9 @@ class MotionCueService : Service() {
         if (mode == CueMode.AUTO) showOverlay(autoActive && screenOn)
         updateNotification()
     }
+
+    private fun locationEnabled(): Boolean =
+        LocationManagerCompat.isLocationEnabled(getSystemService(Context.LOCATION_SERVICE) as LocationManager)
 
     private fun hasLocationPermission(): Boolean =
         ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
@@ -230,8 +235,14 @@ class MotionCueService : Service() {
 
     private fun startInForeground(notification: Notification) {
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.deleteNotificationChannel(OLD_CHANNEL_ID)
         manager.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, getString(R.string.notif_channel), NotificationManager.IMPORTANCE_LOW)
+            // Default importance keeps the notification expanded with its buttons; it stays silent.
+            NotificationChannel(CHANNEL_ID, getString(R.string.notif_channel), NotificationManager.IMPORTANCE_DEFAULT).apply {
+                setSound(null, null)
+                enableVibration(false)
+                setShowBadge(false)
+            }
         )
         var type = 0
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
@@ -247,11 +258,11 @@ class MotionCueService : Service() {
 
     private fun updateNotification(force: Boolean = false) {
         if (mode == CueMode.OFF) return
-        val key = "$mode|$autoActive|$screenOn|$gpsOn|$speedKmh"
+        val key = "$mode|$autoActive|$screenOn|$gpsOn|$speedKmh|${locationEnabled()}"
         if (!force && key == lastNotificationKey) return
         lastNotificationKey = key
-        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
-            .notify(NOTIFICATION_ID, buildNotification(mode))
+        val notification = buildNotification(mode)
+        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(NOTIFICATION_ID, notification)
     }
 
     private fun buildNotification(forMode: CueMode): Notification {
@@ -262,6 +273,7 @@ class MotionCueService : Service() {
             title = getString(if (autoActive && screenOn) R.string.notif_auto_active else R.string.notif_auto_waiting)
             text = when {
                 !hasLocationPermission() -> getString(R.string.notif_auto_no_permission)
+                !locationEnabled() -> getString(R.string.notif_auto_location_off)
                 !screenOn -> getString(R.string.notif_auto_screen_off)
                 speedKmh != null -> getString(R.string.notif_auto_speed, speedKmh, threshold)
                 else -> getString(R.string.notif_auto_searching, threshold)
@@ -282,12 +294,19 @@ class MotionCueService : Service() {
             .setOnlyAlertOnce(true)
             .setSilent(true)
             .setContentIntent(open)
-        if (forMode == CueMode.AUTO) {
-            builder.addAction(0, getString(R.string.action_on), modeIntent(CueMode.ON))
-        } else {
-            builder.addAction(0, getString(R.string.action_auto), modeIntent(CueMode.AUTO))
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+        // All three modes are always offered; the current one is marked.
+        for ((target, label) in listOf(
+            CueMode.OFF to R.string.action_off,
+            CueMode.AUTO to R.string.action_auto,
+            CueMode.ON to R.string.action_on,
+        )) {
+            val name = getString(label)
+            builder.addAction(0, if (target == forMode) "✓ $name" else name, modeIntent(target))
         }
-        builder.addAction(0, getString(R.string.action_off), modeIntent(CueMode.OFF))
+        Prefs.setStatus(this, "$title · $text")
         return builder.build()
     }
 
@@ -298,7 +317,8 @@ class MotionCueService : Service() {
     )
 
     companion object {
-        private const val CHANNEL_ID = "cues"
+        private const val CHANNEL_ID = "cues_v2"
+        private const val OLD_CHANNEL_ID = "cues"
         private const val NOTIFICATION_ID = 1
         private const val EXTRA_MODE = "mode"
         private const val GPS_INTERVAL_MS = 2000L

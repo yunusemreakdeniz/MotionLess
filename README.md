@@ -11,7 +11,7 @@ Ekranın kenarlarına noktalar koyar. Telefonun ivme sensörü aracın hızlanma
 - Üç mod: **Kapalı**, **Oto**, **Açık**. Oto modda ekran açıkken GPS hızı ölçülür; hız eşiği (varsayılan 15 km/s) geçilince ipuçları kendiliğinden açılır, hız eşiğin yarısının altında bir dakika kalınca kapanır. Ekran kapanınca GPS durur.
 - Kalıcı bildirimden modlar arasında geçilir (Aç / Oto / Kapat); bildirim anlık hızı gösterir.
 - Hızlı Ayarlar kutucuğu her dokunuşta Kapalı → Oto → Açık arasında döner.
-- Hassasiyet, nokta boyutu, opaklık, renk ve yerleşim (kenarlar veya tam ekran) ayarlanabilir.
+- Noktalar Apple'daki gibi kenarlarda düzensiz dağılır; nokta sayısı, hassasiyet, boyut, opaklık, renk ve yerleşim (kenarlar veya tam ekran) ayarlanabilir.
 - İsteğe bağlı: hareket yokken noktalar kendiliğinden kaybolur.
 - Türkçe ve İngilizce arayüz. Android 8.0 ve üstü.
 

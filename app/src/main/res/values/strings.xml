@@ -45,4 +45,14 @@
     <string name="action_on">Turn on</string>
     <string name="action_auto">Auto</string>
     <string name="action_off">Turn off</string>
+    <string name="dot_count">Number of dots</string>
+    <string name="notif_perm_title">Notifications are off</string>
+    <string name="notif_perm_body">Turn on notifications to switch between Off, Auto and On from the notification panel.</string>
+    <string name="open_settings">Open settings</string>
+    <string name="location_needed_title">Precise location is needed</string>
+    <string name="location_needed_body">Auto mode measures speed with GPS. Allow location access while using the app and turn on Precise location.</string>
+    <string name="location_precise_body">You allowed only approximate location, which cannot measure speed. In settings, open Location and turn on Use precise location.</string>
+    <string name="location_off_title">Location is off</string>
+    <string name="location_off_body">Auto mode cannot measure speed while location is off. Turn on location in settings.</string>
+    <string name="notif_auto_location_off">Location is off. Turn it on to measure speed.</string>
 </resources>

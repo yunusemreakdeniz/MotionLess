@@ -14,6 +14,7 @@ data class CueSettings(
     val layout: Int = LAYOUT_EDGES,
     val autoHide: Boolean = false,
     val speedThresholdKmh: Int = 15,
+    val dotCount: Int = 30,
 ) {
     val color: Int get() = COLORS[colorIndex.coerceIn(COLORS.indices)]
 
@@ -40,6 +41,8 @@ object Prefs {
     private const val KEY_LAYOUT = "layout"
     private const val KEY_AUTO_HIDE = "auto_hide"
     private const val KEY_SPEED = "speed_threshold"
+    private const val KEY_DOT_COUNT = "dot_count"
+    const val KEY_STATUS = "status"
 
     fun of(context: Context): SharedPreferences =
         context.applicationContext.getSharedPreferences("motionless", Context.MODE_PRIVATE)
@@ -55,6 +58,7 @@ object Prefs {
             layout = p.getInt(KEY_LAYOUT, d.layout),
             autoHide = p.getBoolean(KEY_AUTO_HIDE, d.autoHide),
             speedThresholdKmh = p.getInt(KEY_SPEED, d.speedThresholdKmh),
+            dotCount = p.getInt(KEY_DOT_COUNT, d.dotCount),
         )
     }
 
@@ -67,6 +71,7 @@ object Prefs {
             .putInt(KEY_LAYOUT, s.layout)
             .putBoolean(KEY_AUTO_HIDE, s.autoHide)
             .putInt(KEY_SPEED, s.speedThresholdKmh)
+            .putInt(KEY_DOT_COUNT, s.dotCount)
             .apply()
     }
 
@@ -75,5 +80,12 @@ object Prefs {
 
     fun setMode(context: Context, mode: CueMode) {
         of(context).edit().putString(KEY_MODE, mode.name).apply()
+    }
+
+    /** One-line live status written by the service (speed, GPS state), shown in the app. */
+    fun status(context: Context): String = of(context).getString(KEY_STATUS, "") ?: ""
+
+    fun setStatus(context: Context, text: String) {
+        of(context).edit().putString(KEY_STATUS, text).apply()
     }
 }
