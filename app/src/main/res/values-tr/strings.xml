@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tagline">Araçta telefon kullanırken mide bulantısını azaltır. Ekran kenarındaki noktalar aracın hareketiyle kayar; gözünün gördüğü, vücudunun hissettiğiyle uyuşur.</string>
+    <string name="start">Hareket ipuçlarını aç</string>
+    <string name="stop">Hareket ipuçlarını kapat</string>
+    <string name="status_on">Hareket ipuçları açık; tüm uygulamaların üzerinde görünür.</string>
+    <string name="status_off">Hareket ipuçları kapalı.</string>
+    <string name="perm_title">Diğer uygulamaların üzerinde gösterme</string>
+    <string name="perm_body">Noktaları diğer uygulamaların üzerine çizebilmek için MotionLess bu izne ihtiyaç duyar.</string>
+    <string name="perm_button">İzin ver</string>
+    <string name="need_overlay">MotionLess\'e diğer uygulamaların üzerinde gösterme izni ver, sonra ipuçlarını tekrar aç.</string>
+    <string name="preview_hint">Önizleme: telefonu hareket ettir</string>
+    <string name="sensitivity">Hassasiyet</string>
+    <string name="dot_size">Nokta boyutu</string>
+    <string name="opacity">Opaklık</string>
+    <string name="color">Nokta rengi</string>
+    <string name="color_white">Beyaz</string>
+    <string name="color_black">Siyah</string>
+    <string name="color_blue">Mavi</string>
+    <string name="color_orange">Turuncu</string>
+    <string name="layout">Yerleşim</string>
+    <string name="layout_edges">Kenarlar</string>
+    <string name="layout_grid">Tam ekran</string>
+    <string name="auto_hide">Hareket yokken gizle</string>
+    <string name="auto_hide_hint">Birkaç saniye ivme olmazsa noktalar kaybolur, araç hareket edince geri gelir.</string>
+    <string name="tip">İpucu: Hızlı Ayarlar\'a Hareket ipuçları kutucuğunu ekle, tek dokunuşla aç.</string>
+    <string name="no_sensor">Bu cihazda ivme sensörü yok, hareket ipuçları çalışamaz.</string>
+    <string name="notif_channel">Hareket ipuçları</string>
+    <string name="notif_title">Hareket ipuçları açık</string>
+    <string name="notif_text">Ayarları değiştirmek için dokun.</string>
+    <string name="notif_stop">Kapat</string>
+    <string name="tile_label">Hareket ipuçları</string>
+</resources>

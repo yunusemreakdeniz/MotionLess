@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">MotionLess</string>
+    <string name="tagline">Reduces motion sickness when you use your phone in a vehicle. Dots at the screen edges move with the vehicle, so what your eyes see matches what your body feels.</string>
+    <string name="start">Turn on motion cues</string>
+    <string name="stop">Turn off motion cues</string>
+    <string name="status_on">Motion cues are on and show over every app.</string>
+    <string name="status_off">Motion cues are off.</string>
+    <string name="perm_title">Display over other apps</string>
+    <string name="perm_body">MotionLess needs this permission to draw the dots on top of other apps.</string>
+    <string name="perm_button">Grant permission</string>
+    <string name="need_overlay">Allow MotionLess to display over other apps, then turn the cues on again.</string>
+    <string name="preview_hint">Preview: move your phone</string>
+    <string name="sensitivity">Sensitivity</string>
+    <string name="dot_size">Dot size</string>
+    <string name="opacity">Opacity</string>
+    <string name="color">Dot color</string>
+    <string name="color_white">White</string>
+    <string name="color_black">Black</string>
+    <string name="color_blue">Blue</string>
+    <string name="color_orange">Orange</string>
+    <string name="layout">Layout</string>
+    <string name="layout_edges">Edges</string>
+    <string name="layout_grid">Full screen</string>
+    <string name="auto_hide">Hide when there is no motion</string>
+    <string name="auto_hide_hint">Dots fade out after a few seconds without acceleration and come back when the vehicle moves.</string>
+    <string name="tip">Tip: add the Motion cues tile to Quick Settings to turn the cues on with one tap.</string>
+    <string name="no_sensor">This device has no accelerometer, so motion cues cannot work.</string>
+    <string name="notif_channel">Motion cues</string>
+    <string name="notif_title">Motion cues are on</string>
+    <string name="notif_text">Tap to change settings.</string>
+    <string name="notif_stop">Turn off</string>
+    <string name="tile_label">Motion cues</string>
+</resources>
