@@ -2,6 +2,7 @@ package io.github.yunusemreakdeniz.motionless
 
 import android.Manifest
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -21,10 +22,12 @@ import com.google.android.material.slider.Slider
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var toggle: MaterialButton
+    private lateinit var modeGroup: MaterialButtonToggleGroup
     private lateinit var status: TextView
     private lateinit var permissionCard: View
     private lateinit var preview: MotionCueView
+    private lateinit var speedLabel: TextView
+    private lateinit var speed: Slider
     private lateinit var sensitivity: Slider
     private lateinit var dotSize: Slider
     private lateinit var opacity: Slider
@@ -33,22 +36,42 @@ class MainActivity : AppCompatActivity() {
     private lateinit var autoHide: MaterialSwitch
 
     private var engine: MotionEngine? = null
+    private var pendingMode: CueMode? = null
     private var askedNotifications = false
-    private var loading = false
+    private var updatingUi = false
+    private var backgroundAfterStart = false
 
     private val colorChips = intArrayOf(R.id.color_white, R.id.color_black, R.id.color_blue, R.id.color_orange)
 
+    private val modeListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == Prefs.KEY_MODE) refreshUi()
+    }
+
     private val notificationPermission =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { startCues() }
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { pendingMode?.let { requestMode(it) } }
+
+    private val locationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+            val target = pendingMode ?: return@registerForActivityResult
+            if (result[Manifest.permission.ACCESS_FINE_LOCATION] == true) {
+                requestMode(target)
+            } else {
+                pendingMode = null
+                Toast.makeText(this, R.string.need_location, Toast.LENGTH_LONG).show()
+                refreshUi()
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        toggle = findViewById(R.id.toggle)
+        modeGroup = findViewById(R.id.mode_group)
         status = findViewById(R.id.status)
         permissionCard = findViewById(R.id.permission_card)
         preview = findViewById(R.id.preview)
+        speedLabel = findViewById(R.id.speed_label)
+        speed = findViewById(R.id.speed)
         sensitivity = findViewById(R.id.sensitivity)
         dotSize = findViewById(R.id.dot_size)
         opacity = findViewById(R.id.opacity)
@@ -59,17 +82,20 @@ class MainActivity : AppCompatActivity() {
         preview.forceVisible = true
         loadControls()
 
-        toggle.setOnClickListener {
-            if (Prefs.isRunning(this)) {
-                MotionCueService.stop(this)
-                toggle.postDelayed({ refreshUi() }, 300)
-            } else {
-                startCues()
-            }
+        modeGroup.addOnButtonCheckedListener { _, id, isChecked ->
+            if (!isChecked || updatingUi) return@addOnButtonCheckedListener
+            requestMode(
+                when (id) {
+                    R.id.mode_auto -> CueMode.AUTO
+                    R.id.mode_on -> CueMode.ON
+                    else -> CueMode.OFF
+                }
+            )
         }
         findViewById<MaterialButton>(R.id.grant).setOnClickListener { openOverlaySettings() }
 
         val sliderListener = Slider.OnChangeListener { _, _, fromUser -> if (fromUser) saveControls() }
+        speed.addOnChangeListener(sliderListener)
         sensitivity.addOnChangeListener(sliderListener)
         dotSize.addOnChangeListener(sliderListener)
         opacity.addOnChangeListener(sliderListener)
@@ -87,6 +113,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        Prefs.of(this).registerOnSharedPreferenceChangeListener(modeListener)
         refreshUi()
         engine = MotionEngine(this) { lateral, forward -> preview.onMotion(lateral, forward) }.also {
             if (!it.isAvailable) Toast.makeText(this, R.string.no_sensor, Toast.LENGTH_LONG).show()
@@ -95,6 +122,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
+        Prefs.of(this).unregisterOnSharedPreferenceChangeListener(modeListener)
         engine?.stop()
         engine = null
         super.onPause()
@@ -104,54 +132,94 @@ class MainActivity : AppCompatActivity() {
         val current = intent ?: return
         if (current.action != ACTION_START) return
         current.action = null
-        if (startCues()) moveTaskToBack(true)
+        val mode = current.getStringExtra(EXTRA_MODE)?.let { runCatching { CueMode.valueOf(it) }.getOrNull() } ?: CueMode.AUTO
+        backgroundAfterStart = true
+        requestMode(mode)
     }
 
-    /** Returns true when the service was started. */
-    private fun startCues(): Boolean {
+    /** Asks for whatever the mode needs, then starts or switches the service. */
+    private fun requestMode(mode: CueMode) {
+        pendingMode = mode
+        if (mode == CueMode.OFF) {
+            MotionCueService.switchTo(this, CueMode.OFF)
+            done()
+            return
+        }
         if (!Settings.canDrawOverlays(this)) {
             Toast.makeText(this, R.string.need_overlay, Toast.LENGTH_LONG).show()
             openOverlaySettings()
-            return false
+            pendingMode = null
+            backgroundAfterStart = false
+            refreshUi()
+            return
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !askedNotifications &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+            !granted(Manifest.permission.POST_NOTIFICATIONS)
         ) {
             askedNotifications = true
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-            return false
+            return
         }
-        MotionCueService.start(this)
-        toggle.postDelayed({ refreshUi() }, 300)
-        return true
+        if (mode == CueMode.AUTO && !granted(Manifest.permission.ACCESS_FINE_LOCATION)) {
+            locationPermission.launch(
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+            )
+            return
+        }
+        MotionCueService.start(this, mode)
+        done()
+        if (backgroundAfterStart) moveTaskToBack(true)
+        backgroundAfterStart = false
     }
+
+    private fun done() {
+        pendingMode = null
+        modeGroup.postDelayed({ refreshUi() }, 300)
+    }
+
+    private fun granted(permission: String) =
+        ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
 
     private fun openOverlaySettings() {
         startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
     }
 
     private fun refreshUi() {
-        val running = Prefs.isRunning(this)
-        toggle.setText(if (running) R.string.stop else R.string.start)
-        status.setText(if (running) R.string.status_on else R.string.status_off)
+        val mode = pendingMode ?: Prefs.mode(this)
+        updatingUi = true
+        modeGroup.check(
+            when (mode) {
+                CueMode.OFF -> R.id.mode_off
+                CueMode.AUTO -> R.id.mode_auto
+                CueMode.ON -> R.id.mode_on
+            }
+        )
+        updatingUi = false
+        status.text = when (mode) {
+            CueMode.OFF -> getString(R.string.status_off)
+            CueMode.AUTO -> getString(R.string.status_auto, speed.value.toInt())
+            CueMode.ON -> getString(R.string.status_on)
+        }
         permissionCard.visibility = if (Settings.canDrawOverlays(this)) View.GONE else View.VISIBLE
     }
 
     private fun loadControls() {
-        loading = true
+        updatingUi = true
         val s = Prefs.load(this)
+        speed.value = s.speedThresholdKmh.toFloat().coerceIn(speed.valueFrom, speed.valueTo)
         sensitivity.value = s.sensitivity.toFloat()
         dotSize.value = s.dotSizeDp.toFloat()
         opacity.value = s.opacity.toFloat()
         colors.check(colorChips[s.colorIndex.coerceIn(colorChips.indices)])
         layoutGroup.check(if (s.layout == CueSettings.LAYOUT_GRID) R.id.layout_grid else R.id.layout_edges)
         autoHide.isChecked = s.autoHide
+        speedLabel.text = getString(R.string.auto_speed, s.speedThresholdKmh)
         preview.settings = s
-        loading = false
+        updatingUi = false
     }
 
     private fun saveControls() {
-        if (loading) return
+        if (updatingUi) return
         val s = CueSettings(
             sensitivity = sensitivity.value.toInt(),
             dotSizeDp = dotSize.value.toInt(),
@@ -159,12 +227,16 @@ class MainActivity : AppCompatActivity() {
             colorIndex = colorChips.indexOf(colors.checkedChipId).coerceAtLeast(0),
             layout = if (layoutGroup.checkedButtonId == R.id.layout_grid) CueSettings.LAYOUT_GRID else CueSettings.LAYOUT_EDGES,
             autoHide = autoHide.isChecked,
+            speedThresholdKmh = speed.value.toInt(),
         )
         Prefs.save(this, s)
         preview.settings = s
+        speedLabel.text = getString(R.string.auto_speed, s.speedThresholdKmh)
+        refreshUi()
     }
 
     companion object {
         const val ACTION_START = "io.github.yunusemreakdeniz.motionless.START"
+        const val EXTRA_MODE = "mode"
     }
 }

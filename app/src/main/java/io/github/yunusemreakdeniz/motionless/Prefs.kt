@@ -3,6 +3,9 @@ package io.github.yunusemreakdeniz.motionless
 import android.content.Context
 import android.content.SharedPreferences
 
+/** OFF: nothing runs. AUTO: cues appear while the screen is on and the vehicle is fast enough. ON: always. */
+enum class CueMode { OFF, AUTO, ON }
+
 data class CueSettings(
     val sensitivity: Int = 5,
     val dotSizeDp: Int = 10,
@@ -10,6 +13,7 @@ data class CueSettings(
     val colorIndex: Int = 0,
     val layout: Int = LAYOUT_EDGES,
     val autoHide: Boolean = false,
+    val speedThresholdKmh: Int = 15,
 ) {
     val color: Int get() = COLORS[colorIndex.coerceIn(COLORS.indices)]
 
@@ -28,13 +32,14 @@ data class CueSettings(
 }
 
 object Prefs {
-    const val KEY_RUNNING = "running"
+    const val KEY_MODE = "mode"
     private const val KEY_SENSITIVITY = "sensitivity"
     private const val KEY_DOT_SIZE = "dot_size"
     private const val KEY_OPACITY = "opacity"
     private const val KEY_COLOR = "color"
     private const val KEY_LAYOUT = "layout"
     private const val KEY_AUTO_HIDE = "auto_hide"
+    private const val KEY_SPEED = "speed_threshold"
 
     fun of(context: Context): SharedPreferences =
         context.applicationContext.getSharedPreferences("motionless", Context.MODE_PRIVATE)
@@ -49,6 +54,7 @@ object Prefs {
             colorIndex = p.getInt(KEY_COLOR, d.colorIndex),
             layout = p.getInt(KEY_LAYOUT, d.layout),
             autoHide = p.getBoolean(KEY_AUTO_HIDE, d.autoHide),
+            speedThresholdKmh = p.getInt(KEY_SPEED, d.speedThresholdKmh),
         )
     }
 
@@ -60,12 +66,14 @@ object Prefs {
             .putInt(KEY_COLOR, s.colorIndex)
             .putInt(KEY_LAYOUT, s.layout)
             .putBoolean(KEY_AUTO_HIDE, s.autoHide)
+            .putInt(KEY_SPEED, s.speedThresholdKmh)
             .apply()
     }
 
-    fun isRunning(context: Context): Boolean = of(context).getBoolean(KEY_RUNNING, false)
+    fun mode(context: Context): CueMode =
+        runCatching { CueMode.valueOf(of(context).getString(KEY_MODE, null) ?: "OFF") }.getOrDefault(CueMode.OFF)
 
-    fun setRunning(context: Context, running: Boolean) {
-        of(context).edit().putBoolean(KEY_RUNNING, running).apply()
+    fun setMode(context: Context, mode: CueMode) {
+        of(context).edit().putString(KEY_MODE, mode.name).apply()
     }
 }

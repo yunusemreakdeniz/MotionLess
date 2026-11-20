@@ -62,13 +62,38 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/toggle"
+        <com.google.android.material.button.MaterialButtonToggleGroup
+            android:id="@+id/mode_group"
             android:layout_width="match_parent"
-            android:layout_height="64dp"
+            android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
-            android:text="@string/start"
-            android:textSize="18sp" />
+            app:selectionRequired="true"
+            app:singleSelection="true">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/mode_off"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="0dp"
+                android:layout_height="60dp"
+                android:layout_weight="1"
+                android:text="@string/mode_off" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/mode_auto"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="0dp"
+                android:layout_height="60dp"
+                android:layout_weight="1"
+                android:text="@string/mode_auto" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/mode_on"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="0dp"
+                android:layout_height="60dp"
+                android:layout_weight="1"
+                android:text="@string/mode_on" />
+        </com.google.android.material.button.MaterialButtonToggleGroup>
 
         <TextView
             android:id="@+id/status"
@@ -98,6 +123,21 @@
                 android:text="@string/preview_hint"
                 android:textColor="#FFFFFFFF" />
         </FrameLayout>
+
+        <TextView
+            android:id="@+id/speed_label"
+            style="@style/SectionLabel"
+            android:text="@string/auto_speed" />
+
+        <com.google.android.material.slider.Slider
+            android:id="@+id/speed"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:contentDescription="@string/auto_speed_short"
+            android:stepSize="5"
+            android:value="15"
+            android:valueFrom="5"
+            android:valueTo="50" />
 
         <TextView
             style="@style/SectionLabel"

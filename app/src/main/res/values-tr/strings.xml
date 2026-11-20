@@ -1,9 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="tagline">Araçta telefon kullanırken mide bulantısını azaltır. Ekran kenarındaki noktalar aracın hareketiyle kayar; gözünün gördüğü, vücudunun hissettiğiyle uyuşur.</string>
-    <string name="start">Hareket ipuçlarını aç</string>
-    <string name="stop">Hareket ipuçlarını kapat</string>
-    <string name="status_on">Hareket ipuçları açık; tüm uygulamaların üzerinde görünür.</string>
+    <string name="status_on">Hareket ipuçları sürekli açık; tüm uygulamaların üzerinde görünür.</string>
     <string name="status_off">Hareket ipuçları kapalı.</string>
     <string name="perm_title">Diğer uygulamaların üzerinde gösterme</string>
     <string name="perm_body">Noktaları diğer uygulamaların üzerine çizebilmek için MotionLess bu izne ihtiyaç duyar.</string>
@@ -26,8 +24,24 @@
     <string name="tip">İpucu: Hızlı Ayarlar\'a Hareket ipuçları kutucuğunu ekle, tek dokunuşla aç.</string>
     <string name="no_sensor">Bu cihazda ivme sensörü yok, hareket ipuçları çalışamaz.</string>
     <string name="notif_channel">Hareket ipuçları</string>
-    <string name="notif_title">Hareket ipuçları açık</string>
     <string name="notif_text">Ayarları değiştirmek için dokun.</string>
     <string name="notif_stop">Kapat</string>
     <string name="tile_label">Hareket ipuçları</string>
+    <string name="mode_off">Kapalı</string>
+    <string name="mode_auto">Oto</string>
+    <string name="mode_on">Açık</string>
+    <string name="status_auto">Oto: ekran açıkken hız %1$d km/s\'yi geçince ipuçları açılır, bunun yarısının altında bir dakika kalınca kapanır.</string>
+    <string name="auto_speed">Oto mod hızı: %1$d km/s</string>
+    <string name="auto_speed_short">Oto mod hızı</string>
+    <string name="need_location">Oto mod hızı ölçmek için konum iznine ihtiyaç duyar.</string>
+    <string name="notif_on">Hareket ipuçları açık</string>
+    <string name="notif_auto_active">Oto: hareket ipuçları açık</string>
+    <string name="notif_auto_waiting">Oto: hız bekleniyor</string>
+    <string name="notif_auto_speed">Hız %1$d km/s · %2$d km/s\'de açılır</string>
+    <string name="notif_auto_searching">GPS aranıyor · %1$d km/s\'de açılır</string>
+    <string name="notif_auto_screen_off">Ekran kapalı, GPS duraklatıldı</string>
+    <string name="notif_auto_no_permission">Konum izni yok. Vermek için uygulamayı aç.</string>
+    <string name="action_on">Aç</string>
+    <string name="action_auto">Oto</string>
+    <string name="action_off">Kapat</string>
 </resources>

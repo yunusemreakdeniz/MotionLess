@@ -2,9 +2,7 @@
 <resources>
     <string name="app_name" translatable="false">MotionLess</string>
     <string name="tagline">Reduces motion sickness when you use your phone in a vehicle. Dots at the screen edges move with the vehicle, so what your eyes see matches what your body feels.</string>
-    <string name="start">Turn on motion cues</string>
-    <string name="stop">Turn off motion cues</string>
-    <string name="status_on">Motion cues are on and show over every app.</string>
+    <string name="status_on">Motion cues are always on and show over every app.</string>
     <string name="status_off">Motion cues are off.</string>
     <string name="perm_title">Display over other apps</string>
     <string name="perm_body">MotionLess needs this permission to draw the dots on top of other apps.</string>
@@ -27,8 +25,24 @@
     <string name="tip">Tip: add the Motion cues tile to Quick Settings to turn the cues on with one tap.</string>
     <string name="no_sensor">This device has no accelerometer, so motion cues cannot work.</string>
     <string name="notif_channel">Motion cues</string>
-    <string name="notif_title">Motion cues are on</string>
     <string name="notif_text">Tap to change settings.</string>
     <string name="notif_stop">Turn off</string>
     <string name="tile_label">Motion cues</string>
+    <string name="mode_off">Off</string>
+    <string name="mode_auto">Auto</string>
+    <string name="mode_on">On</string>
+    <string name="status_auto">Auto: with the screen on, cues turn on above %1$d km/h and turn off after a minute below half that speed.</string>
+    <string name="auto_speed">Auto mode speed: %1$d km/h</string>
+    <string name="auto_speed_short">Auto mode speed</string>
+    <string name="need_location">Auto mode needs location permission to measure speed.</string>
+    <string name="notif_on">Motion cues are on</string>
+    <string name="notif_auto_active">Auto: motion cues are on</string>
+    <string name="notif_auto_waiting">Auto: waiting for speed</string>
+    <string name="notif_auto_speed">Speed %1$d km/h · turns on at %2$d km/h</string>
+    <string name="notif_auto_searching">Looking for GPS · turns on at %1$d km/h</string>
+    <string name="notif_auto_screen_off">Screen is off, GPS paused</string>
+    <string name="notif_auto_no_permission">Location permission is missing. Open the app to grant it.</string>
+    <string name="action_on">Turn on</string>
+    <string name="action_auto">Auto</string>
+    <string name="action_off">Turn off</string>
 </resources>
